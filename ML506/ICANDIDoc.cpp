@@ -1468,7 +1468,6 @@ void g_UpdateStimOnFPGA(int xc0, int xch, int stimWidth, int iy1, int iy2, int i
 	float cent, w1, w2;
 	int ny1, ny2, ny3;
 
-	// use -8 for all below lines for AOVIS system
 	if (channelID == STIM_CHANNEL_GR) {
 		ny1 = iy1;
 		ny2 = iy2;
@@ -2175,8 +2174,8 @@ void g_StimulusDeliveryFFT(int sx, int sy, BOOL bStimulus, int blockID)
 				grShiftY = -g_ICANDIParams.RGBClkShifts[1].y + g_Channel2Shift.y;
 				if (aoslo_movie.stim_gr_nx==aoslo_movie.stim_rd_nx && aoslo_movie.stim_gr_ny==aoslo_movie.stim_rd_ny &&
 					aoslo_movie.stim_ir_nx==aoslo_movie.stim_rd_nx && aoslo_movie.stim_ir_ny==aoslo_movie.stim_rd_ny) {
-					g_objVirtex5BMD.AppWriteStimAddrShift(g_hDevVirtex5, y-aoslo_movie.stim_rd_ny/2-8, y+aoslo_movie.stim_rd_ny/2-8, rdShiftY, grShiftY, aoslo_movie.stim_rd_nx, -1, -100);
-					g_objVirtex5BMD.AppWriteStimLUT(g_hDevVirtex5, true, x_ir, x_ir, x_gr, x_gr, x_rd, x_rd, y-aoslo_movie.stim_rd_ny/2-8, y+aoslo_movie.stim_rd_ny/2-8, 0, rdShiftY, grShiftY, g_ICANDIParams.Desinusoid, x1ir, x2ir, x1gr, x2gr, x1rd, x2rd);
+					g_objVirtex5BMD.AppWriteStimAddrShift(g_hDevVirtex5, y-aoslo_movie.stim_rd_ny/2, y+aoslo_movie.stim_rd_ny/2, rdShiftY, grShiftY, aoslo_movie.stim_rd_nx, -1, -100);
+					g_objVirtex5BMD.AppWriteStimLUT(g_hDevVirtex5, true, x_ir, x_ir, x_gr, x_gr, x_rd, x_rd, y-aoslo_movie.stim_rd_ny/2, y+aoslo_movie.stim_rd_ny/2, 0, rdShiftY, grShiftY, g_ICANDIParams.Desinusoid, x1ir, x2ir, x1gr, x2gr, x1rd, x2rd);
 				} else {
 					g_objVirtex5BMD.AppWriteStimAddrShift(g_hDevVirtex5, y, rdShiftY, grShiftY, aoslo_movie.stim_ir_nx, aoslo_movie.stim_ir_ny, aoslo_movie.stim_gr_nx, aoslo_movie.stim_gr_ny, aoslo_movie.stim_rd_nx, aoslo_movie.stim_rd_ny);
 					g_objVirtex5BMD.AppWriteStimLUT(g_hDevVirtex5, true, x_ir, y, x_gr, y+grShiftY, x_rd, y+rdShiftY, aoslo_movie.stim_ir_ny, aoslo_movie.stim_rd_ny, aoslo_movie.stim_gr_ny, g_ICANDIParams.Desinusoid, x1ir, x2ir, x1rd, x2rd, x1gr, x2gr);

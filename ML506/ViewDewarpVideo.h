@@ -56,6 +56,7 @@ private:
 
 	CByteArray     m_array;
 	BYTE		   *m_tempVideoOut;
+	int            m_MemPoolID;
 
 	// these parameter are used to do automatic cone searching
 	int      m_coneRadius;

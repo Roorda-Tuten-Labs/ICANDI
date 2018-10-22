@@ -27,6 +27,8 @@ const int  LINES_PER_STIMULUS = 32;		// line span per stimulus in the case of st
 unsigned short  g_iStimulusSizeX_RD;
 unsigned short  g_iStimulusSizeX_GR;
 unsigned short  g_iStimulusSizeX_IR;
+BYTE	m_ppdata;
+
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -764,14 +766,21 @@ void g_SOFHandler()
 	aoslo_movie.FlashOnFlag   = FALSE;
 	aoslo_movie.WriteMarkFlag = FALSE;			
 //	g_objVirtex5BMD.AppClearCriticalInfo(g_hDevVirtex5);
+
+	if (g_bRecord) {
+		Out32(0xD050, 0x01);
+	}
 	
 	if (g_bMatlab_Update == TRUE) {
 		if (!g_bMatlabVideo) {
 			if (g_bMatlab_Loop == TRUE || g_bMatlab_Trigger == TRUE) {//update according to sequence and stop at the end or update according to sequence continuously
 				g_sMatlab_Update_Ind[0] = g_sMatlab_Update_Ind[1] = g_sMatlab_Update_Ind[2] = g_nCurFlashCount;
-				aoslo_movie.bRedAomOn && (g_nRedPower_Matlab[g_nCurFlashCount] != g_nRedPower_Matlab[g_nCurFlashCount-1])?g_objVirtex5BMD.AppUpdate14BITsLaserRed(g_hDevVirtex5, g_usRed_LUT[g_nRedPower_Matlab[g_nCurFlashCount]]):0;
-				aoslo_movie.bIRAomOn && (g_nIRPower_Matlab[g_nCurFlashCount] != g_nIRPower_Matlab[g_nCurFlashCount-1])?g_objVirtex5BMD.AppUpdateIRLaser(g_hDevVirtex5, g_usIR_LUT[g_nIRPower_Matlab[g_nCurFlashCount]]):0;
-				aoslo_movie.bGrAomOn && (g_nGreenPower_Matlab[g_nCurFlashCount] != g_nGreenPower_Matlab[g_nCurFlashCount-1])?g_objVirtex5BMD.AppUpdate14BITsLaserGR(g_hDevVirtex5, g_usGreen_LUT[g_nGreenPower_Matlab[g_nCurFlashCount]]):0;
+				aoslo_movie.bRedAomOn && (g_nRedPower_Matlab[g_nCurFlashCount] != g_nRedPower_Matlab[g_nCurFlashCount-1])?g_objVirtex5BMD.AppUpdate14BITsLaserRed(g_hDevVirtex5, g_usRed_LUT[g_nRedPower_Matlab[g_nCurFlashCount]]),
+																															aoslo_movie.nLaserPowerRed = g_usRed_LUT[g_nRedPower_Matlab[g_nCurFlashCount]]:0;
+				aoslo_movie.bIRAomOn && (g_nIRPower_Matlab[g_nCurFlashCount] != g_nIRPower_Matlab[g_nCurFlashCount-1])?g_objVirtex5BMD.AppUpdateIRLaser(g_hDevVirtex5, g_usIR_LUT[g_nIRPower_Matlab[g_nCurFlashCount]]),
+																															aoslo_movie.nLaserPowerIR = g_usIR_LUT[g_nIRPower_Matlab[g_nCurFlashCount]]:0;
+				aoslo_movie.bGrAomOn && (g_nGreenPower_Matlab[g_nCurFlashCount] != g_nGreenPower_Matlab[g_nCurFlashCount-1])?g_objVirtex5BMD.AppUpdate14BITsLaserGR(g_hDevVirtex5, g_usGreen_LUT[g_nGreenPower_Matlab[g_nCurFlashCount]]),
+																															aoslo_movie.nLaserPowerGreen = g_usGreen_LUT[g_nGreenPower_Matlab[g_nCurFlashCount]]:0;
 				g_StimulusPos.x = (!aoslo_movie.fStabGainStim && g_bGain0Tracking)?g_StimulusPos0G.x:(g_nStimPosBak_Matlab.x + g_nLocX[0][g_nCurFlashCount]);
 				g_StimulusPos.y = (!aoslo_movie.fStabGainStim && g_bGain0Tracking)?g_StimulusPos0G.y:(g_nStimPosBak_Matlab.y + g_nLocY[0][g_nCurFlashCount]);
 				g_Channel1Shift.x = (abs(g_nLocX[1][g_nCurFlashCount])<=32)?g_nLocX[1][g_nCurFlashCount]:0;
@@ -886,11 +895,13 @@ void g_SOFHandler()
 			//01/11/2012
 			aoslo_movie.nStimFrameIdx ++;
 			load = TRUE;
-			if (aoslo_movie.nStimFrameIdx >= aoslo_movie.nStimFrameNum && g_bMatlab_Update == TRUE) { //12/12/2011
+			if (aoslo_movie.nStimFrameIdx >= aoslo_movie.nStimVideoLength[aoslo_movie.nStimVideoIdx] && g_bMatlab_Update == TRUE) { //12/12/2011
 				if (g_bMatlab_Loop && (g_nFlashCount == -1 || g_nCurFlashCount < g_nFlashCount)) {//infinite loop
 					aoslo_movie.nStimFrameIdx = 0;
+					aoslo_movie.nStimVideoExt?fseek(aoslo_movie.FPStimVideo, sizeof(unsigned short)*4, SEEK_SET):0;
 				} else {
 					aoslo_movie.nStimFrameIdx = -1;
+					aoslo_movie.nStimVideoExt?fclose(aoslo_movie.FPStimVideo):0;
 					load = FALSE;
 					g_bMatlab_Update = FALSE;
 					//	g_bStimulusOn = FALSE;	
@@ -911,22 +922,40 @@ void g_SOFHandler()
 					SetEvent(g_EventLoadStim);
 				}
 			}
-			if (load == TRUE) {	//12/15/2011		
-				memcpy(aoslo_movie.stim_rd_buffer, aoslo_movie.stim_video[aoslo_movie.nStimVideoIdx]
-				+(aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*(aoslo_movie.nStimFrameIdx*aoslo_movie.nStimVideoPlanes[aoslo_movie.nStimVideoIdx])) 
-					, aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*sizeof(unsigned short));
-				memcpy(aoslo_movie.stim_gr_buffer, aoslo_movie.stim_video[aoslo_movie.nStimVideoIdx]
-				+(aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*(aoslo_movie.nStimFrameIdx*aoslo_movie.nStimVideoPlanes[aoslo_movie.nStimVideoIdx]+1)) 
-					, aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*sizeof(unsigned short));
-				memcpy(aoslo_movie.stim_ir_buffer, aoslo_movie.stim_video[aoslo_movie.nStimVideoIdx]
-				+(aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*(aoslo_movie.nStimFrameIdx*aoslo_movie.nStimVideoPlanes[aoslo_movie.nStimVideoIdx]+2)) 
-					, aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*sizeof(unsigned short));
-				aoslo_movie.stim_rd_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
-				aoslo_movie.stim_rd_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];
-				aoslo_movie.stim_gr_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
-				aoslo_movie.stim_gr_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];
-				aoslo_movie.stim_ir_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
-				aoslo_movie.stim_ir_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];	
+			if (load == TRUE) {	//12/15/2011
+				switch (aoslo_movie.nStimVideoExt) {
+					case 0: //avi
+						memcpy(aoslo_movie.stim_rd_buffer, aoslo_movie.stim_video[aoslo_movie.nStimVideoIdx]
+						+(aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*(aoslo_movie.nStimFrameIdx*aoslo_movie.nStimVideoPlanes[aoslo_movie.nStimVideoIdx])) 
+							, aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*sizeof(unsigned short));
+						memcpy(aoslo_movie.stim_gr_buffer, aoslo_movie.stim_video[aoslo_movie.nStimVideoIdx]
+						+(aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*(aoslo_movie.nStimFrameIdx*aoslo_movie.nStimVideoPlanes[aoslo_movie.nStimVideoIdx]+1)) 
+							, aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*sizeof(unsigned short));
+						memcpy(aoslo_movie.stim_ir_buffer, aoslo_movie.stim_video[aoslo_movie.nStimVideoIdx]
+						+(aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*(aoslo_movie.nStimFrameIdx*aoslo_movie.nStimVideoPlanes[aoslo_movie.nStimVideoIdx]+2)) 
+							, aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx]*aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx]*sizeof(unsigned short));
+						aoslo_movie.stim_rd_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_rd_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_gr_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_gr_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_ir_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_ir_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];	
+						break;
+					case 1: //mbuf
+						fread(aoslo_movie.stim_rd_buffer, sizeof(unsigned short), aoslo_movie.nStimVideoFrameSize[aoslo_movie.nStimVideoIdx], aoslo_movie.FPStimVideo);
+						fread(aoslo_movie.stim_gr_buffer, sizeof(unsigned short), aoslo_movie.nStimVideoFrameSize[aoslo_movie.nStimVideoIdx], aoslo_movie.FPStimVideo);
+						fread(aoslo_movie.stim_ir_buffer, sizeof(unsigned short), aoslo_movie.nStimVideoFrameSize[aoslo_movie.nStimVideoIdx], aoslo_movie.FPStimVideo);
+						aoslo_movie.stim_rd_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_rd_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_gr_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_gr_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_ir_nx = aoslo_movie.nStimVideoNX[aoslo_movie.nStimVideoIdx];
+						aoslo_movie.stim_ir_ny = aoslo_movie.nStimVideoNY[aoslo_movie.nStimVideoIdx];
+						break;
+					default:
+						;
+				}
+				
 				SetEvent(g_EventLoadStim);	
 			//	fprintf(g_fp, "SOF, fraID:%d, %d, %d\n", g_frameIndex, aoslo_movie.nStimVideoIdx, aoslo_movie.nStimFrameIdx);
 				aoslo_movie.FlashOnFlag   = TRUE;
@@ -1008,11 +1037,11 @@ void g_SOFHandler()
 			load = FALSE;	
 
 			if (aoslo_movie.bStimRewind == TRUE) {
-				if (aoslo_movie.nStimFrameIdx >= aoslo_movie.nStimFrameNum) 
+				if (aoslo_movie.nStimFrameIdx >= aoslo_movie.nStimVideoLength[aoslo_movie.nStimVideoIdx]) 
 					aoslo_movie.nStimFrameIdx = 0;			
 				load = TRUE;
 			} else {
-				if (aoslo_movie.nStimFrameIdx >= aoslo_movie.nStimFrameNum) {
+				if (aoslo_movie.nStimFrameIdx >= aoslo_movie.nStimVideoLength[aoslo_movie.nStimVideoIdx]) {
 					aoslo_movie.nStimFrameIdx = -1;
 				} else {
 					load = TRUE;
@@ -1287,7 +1316,7 @@ void DLLCALLCONV VIRTEX5_IntHandler(PVOID pData)
 
 	SetEvent(g_EventEOB);
 
-    // Execute the diagnostics application's interrupt handler routine 
+    // Execute the diagnostics application's interrupt handler routine at the end of the frame
 	if (lineID == g_VideoInfo.img_height) {
 		g_bEOF = TRUE;
 //		fprintf(g_fp, "    A: %d\n", g_sampling_counter+1);
@@ -1973,9 +2002,10 @@ void g_StimulusDeliveryFFT(int sx, int sy, BOOL bStimulus, int blockID)
 			}
 
 			aoslo_movie.stimulus_flag = TRUE;
-			SetEvent(g_EventStimPresentFlag);
-			if (g_bRecord);
-			//	Out32(57424,3);
+			aoslo_movie.stimulus_audio_flag?SetEvent(g_EventStimPresentFlag):0;
+			if (g_bRecord) {				
+				Out32(0xD050,3);
+			}
 		} // valid stimulus location
 
 		// the feature of one-frame delay is applied to simple stimulus only
@@ -2187,7 +2217,10 @@ void g_StimulusDeliveryFFT(int sx, int sy, BOOL bStimulus, int blockID)
 //				fprintf(g_fp, "f_cnt:%d, zero gain stimulus,      %d:%d:%d:%5.3f\n", g_sampling_counter, hours, minutes, seconds, milliseconds);
 
 				aoslo_movie.stimulus_flag = TRUE;
-				SetEvent(g_EventStimPresentFlag);
+				aoslo_movie.stimulus_audio_flag?SetEvent(g_EventStimPresentFlag):0;
+				if (g_bRecord) {
+					Out32(0xD050,3);
+				}
 
 			} // valid stimulus location
 
@@ -2663,7 +2696,7 @@ DWORD WINAPI CICANDIDoc::ThreadStablizationFFT(LPVOID pParam)
 			Number of patches is synchronized by the interrupt
 			counts (per frame) from the hardware. 
 		   =============================================== */
-		Out32(0x378, 0);
+	//	Out32(0x378, 0);
 		if (g_frameIndex > 1 && blockID < g_BlockCounts) {
 			// patch stabilization is run only when
 			// both current frame and previous frame are not saccade frames.
@@ -2684,7 +2717,7 @@ DWORD WINAPI CICANDIDoc::ThreadStablizationFFT(LPVOID pParam)
 					mirrorY = deltaY[blockID-1] = dltY;
 					MarkPatch[blockID-1] = retCode;
 					bStimulus = TRUE;
-					Out32(0x378, 0);
+				//	Out32(0x378, 0);
 					g_bValidSignal[blockID-1] = TRUE;
 				// target patch is out the top range of reference frame
 				} else if (retCode == STAB_OUT_OF_TOP) {
@@ -2692,7 +2725,7 @@ DWORD WINAPI CICANDIDoc::ThreadStablizationFFT(LPVOID pParam)
 					mirrorX = deltaX[blockID-1] = -deltaX[g_BlockCounts-2];
 					mirrorY = deltaY[blockID-1] = -deltaY[g_BlockCounts-2];
 					bStimulus = TRUE;
-					Out32(0x378, 2);
+				//	Out32(0x378, 2);
 					g_bValidSignal[blockID-1] = FALSE;
 				// target patch is out the bottom range of reference frame
 				} else if (retCode == STAB_OUT_OF_BOTTOM) {
@@ -2709,7 +2742,7 @@ DWORD WINAPI CICANDIDoc::ThreadStablizationFFT(LPVOID pParam)
 				//	mirrorX = deltaX[blockID-1] = deltaX[blockID-2];
 				//	mirrorY = deltaY[blockID-1] = deltaY[blockID-2];
 					bStimulus = TRUE;
-					Out32(0x378, 2);
+				//	Out32(0x378, 2);
 					g_bValidSignal[blockID-1] = FALSE;
 				// low correlation coefficient factor between reference patch and target patch
 				} else if (retCode == STAB_LOW_COEFF) {
@@ -2722,7 +2755,7 @@ DWORD WINAPI CICANDIDoc::ThreadStablizationFFT(LPVOID pParam)
 						mirrorY = deltaY[blockID-1] = mirrorYoldsent;
 					}
 					bStimulus = FALSE;
-					Out32(0x378, 2);
+				//	Out32(0x378, 2);
 					g_bValidSignal[blockID-1] = FALSE;
 				} else {
 					// with suspicious patch motion, the steering mirror is reset to 0
@@ -2740,7 +2773,7 @@ DWORD WINAPI CICANDIDoc::ThreadStablizationFFT(LPVOID pParam)
 						mirrorY = deltaY[blockID-1] = mirrorYoldsent;
 					}
 					bStimulus = FALSE;
-					Out32(0x378, 0);
+				//	Out32(0x378, 0);
 					g_bValidSignal[blockID-1] = TRUE;
 				}
 
@@ -2759,7 +2792,7 @@ DWORD WINAPI CICANDIDoc::ThreadStablizationFFT(LPVOID pParam)
 				mirrorY = mirrorYoldsent;
 				retCode = -99;
 				bStimulus = FALSE;
-				Out32(0x378, 2);
+			//	Out32(0x378, 2);
 				g_bValidSignal[blockID-1] = FALSE;
 			}
 /*
@@ -2774,7 +2807,7 @@ DWORD WINAPI CICANDIDoc::ThreadStablizationFFT(LPVOID pParam)
 			bStimulus = FALSE;
 			mirrorX = mirrorXoldsent;
 			mirrorY = mirrorYoldsent;
-			Out32(0x378, 2);
+		//	Out32(0x378, 2);
 			g_bValidSignal[blockID-1] = FALSE;
 		}
 
@@ -2888,15 +2921,11 @@ DWORD WINAPI CICANDIDoc::ThreadSaveVideoHDD(LPVOID pParam)
 	CByteArray  m_array;
 	CEvent      WaitEvents; // creates time delay events
 	CICANDIDoc *pDoc = (CICANDIDoc *)pParam;
-	int         i, j, k, idx1, idx2, offset, movie_len;
-	BYTE       *movieA, *movieB;
-	BOOL        bStabilizedOn;	
+	int         k, offset, movie_len;
+	BYTE       *movieA;
 	Mat			frameA;
-	Mat			frameB;
 	movieA = new BYTE[aoslo_movie.height * aoslo_movie.width];
-	movieB = new BYTE[aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy];
 	frameA = Mat(aoslo_movie.height, aoslo_movie.width, CV_8UC1, movieA, 0);
-	frameB = Mat(aoslo_movie.dewarp_sy, aoslo_movie.dewarp_sx, CV_8UC1, movieB, 0);
 
 	do {
 		::WaitForSingleObject(WaitEvents, 1);
@@ -2905,15 +2934,11 @@ DWORD WINAPI CICANDIDoc::ThreadSaveVideoHDD(LPVOID pParam)
 		if (pDoc->m_bDumpingVideo == TRUE) {			
 			pDoc->m_bDumpingVideo = FALSE;
 
-			bStabilizedOn = FALSE;
-
 			// dump raw video to local harddrive
 			if (pDoc->m_bValidAviHandleA == TRUE && 
 				aoslo_movie.video_saveA1 != NULL &&
 				aoslo_movie.video_saveA2 != NULL &&
 				aoslo_movie.video_saveA3 != NULL) {
-
-				if (pDoc->m_bValidAviHandleB == TRUE) bStabilizedOn = TRUE;
 
 				movie_len = MEMORY_POOL_LENGTH;
 				if (aoslo_movie.memory_pool_ID == 0) {
@@ -2944,42 +2969,11 @@ DWORD WINAPI CICANDIDoc::ThreadSaveVideoHDD(LPVOID pParam)
 				}
 			}
 
-			// dump stabilized video to local harddrive
-			if ((pDoc->m_bValidAviHandleB == TRUE || bStabilizedOn == TRUE) && 
-				aoslo_movie.video_saveB1 != NULL &&
-				aoslo_movie.video_saveB2 != NULL &&
-				aoslo_movie.video_saveB3 != NULL) {				
-				movie_len = MEMORY_POOL_LENGTH;
-				if (aoslo_movie.memory_pool_ID == 0) {
-					for (k = 0; k < movie_len; k ++) {
-						offset = k * aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy;
-						memcpy(movieB, &aoslo_movie.video_saveB1[offset], aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy);						
-						pDoc->m_aviFileB.write(frameB);
-					}
-				} else if (aoslo_movie.memory_pool_ID == 1) {
-					for (k = 0; k < movie_len; k ++) {
-						offset = k * aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy;
-						memcpy(movieB, &aoslo_movie.video_saveB2[offset], aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy);						
-						pDoc->m_aviFileB.write(frameB);
-					}
-				} else if (aoslo_movie.memory_pool_ID == 2) {
-					for (k = 0; k < movie_len; k ++) {
-						offset = k * aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy;
-						memcpy(movieB, &aoslo_movie.video_saveB3[offset], aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy);						
-						pDoc->m_aviFileB.write(frameB);
-					}
-				}
-			}
-
-			if (pDoc->m_bValidAviHandleB == FALSE) {
-				if (aoslo_movie.avi_handle_on_B == TRUE) {
-					pDoc->m_aviFileB.release();
-					aoslo_movie.avi_handle_on_B = FALSE;
-				}
-			}
 			if (pDoc->m_iSavedFramesA >= (pDoc->m_nMovieLength<<1)) {				
 				pDoc->m_iSavedFramesA    = 0;
 				g_bRecord = FALSE;
+				m_ppdata &= 0xFC;
+				Out32(0xD050, 0);
 				if (g_bMatlabCtrl && g_bMatlabVideo && g_bMatlab_Update && g_bMatlabAVIsavevideo) g_bMatlabAVIsavevideo = FALSE, g_bMatlab_Update=FALSE,g_bStimulusOn = FALSE;
 				g_viewMsgVideo->PostMessage(WM_MOVIE_SEND, 0, SAVE_VIDEO_FLAG);
 				::WaitForSingleObject(WaitEvents, 350);
@@ -2989,7 +2983,66 @@ DWORD WINAPI CICANDIDoc::ThreadSaveVideoHDD(LPVOID pParam)
 			}
 		}
 	} while (((CICANDIApp*)AfxGetApp())->m_isGrabStarted);	
-	delete [] movieA;		
+	delete [] movieA;
+	
+	return 0;
+}
+
+DWORD WINAPI CICANDIDoc::ThreadSaveDewarpVideoHDD(LPVOID pParam)
+{
+	CByteArray  m_array;
+	CEvent      WaitEvents; // creates time delay events
+	CICANDIDoc *pDoc = (CICANDIDoc *)pParam;
+	int         k, offset, movie_len;
+	BYTE       *movieB;
+	Mat			frameB;
+	movieB = new BYTE[aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy];
+	frameB = Mat(aoslo_movie.dewarp_sy, aoslo_movie.dewarp_sx, CV_8UC1, movieB, 0);
+
+	do {
+		::WaitForSingleObject(WaitEvents, 1);
+
+		// process a full frame of image at the end of a V-sync
+		if (pDoc->m_bDumpingDewarpVideo == TRUE) {			
+			pDoc->m_bDumpingDewarpVideo = FALSE;			
+
+			// dump stabilized video to local harddrive
+			if (pDoc->m_bValidAviHandleB == TRUE && 
+				aoslo_movie.video_saveB1 != NULL &&
+				aoslo_movie.video_saveB2 != NULL &&
+				aoslo_movie.video_saveB3 != NULL) {				
+				movie_len = MEMORY_POOL_LENGTH;
+				if (aoslo_movie.memory_pool_ID_St == 0) {
+					for (k = 0; k < movie_len; k ++) {
+						offset = k * aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy;
+						memcpy(movieB, &aoslo_movie.video_saveB1[offset], aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy);	
+						pDoc->m_aviFileB.write(frameB);
+					}
+				} else if (aoslo_movie.memory_pool_ID_St == 1) {
+					for (k = 0; k < movie_len; k ++) {
+						offset = k * aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy;
+						memcpy(movieB, &aoslo_movie.video_saveB2[offset], aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy);
+						pDoc->m_aviFileB.write(frameB);
+					}
+				} else if (aoslo_movie.memory_pool_ID_St == 2) {
+					for (k = 0; k < movie_len; k ++) {
+						offset = k * aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy;
+						memcpy(movieB, &aoslo_movie.video_saveB3[offset], aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy);
+						pDoc->m_aviFileB.write(frameB);
+					}
+				}
+			}
+			
+			if (pDoc->m_iSavedFramesB >= (pDoc->m_nMovieLength<<1)) {				
+				pDoc->m_iSavedFramesB    = 0;
+				if (aoslo_movie.avi_handle_on_B == TRUE) {
+					pDoc->m_aviFileB.release();
+					aoslo_movie.avi_handle_on_B = FALSE;
+					pDoc->m_bValidAviHandleB = FALSE;
+				}
+			}
+		}
+	} while (((CICANDIApp*)AfxGetApp())->m_isGrabStarted);		
 	delete [] movieB;
 	
 	return 0;
@@ -3136,12 +3189,11 @@ DWORD WINAPI CICANDIDoc::ThreadLoadData2FPGA(LPVOID pParam)
 
 			delete [] lut_loc_buf1;
 
-			if (aoslo_movie.stimulus_audio_flag)
-			{
-				SetEvent(g_EventStimPresentFlag);
+			aoslo_movie.stimulus_audio_flag?SetEvent(g_EventStimPresentFlag):0;
+			if (g_bRecord) {
+			//	m_ppdata |= 0x03;
+				Out32(0xD050,0x03);
 			}
-			if (g_bRecord);
-			//	Out32(57424,3);
   /*
 			for (i = 0; i < g_iStimulusSizeX_RD; i ++) {
 				fprintf(g_fp, "(%d,%d)", lut_loc_buf1[i], lut_loc_buf2[i]);
@@ -3229,103 +3281,123 @@ DWORD WINAPI CICANDIDoc::ThreadReadStimVideo(LPVOID pParam)
 		aoslo_movie.nStimFrameIdx = -1;
 		
 		for (int vid = 0; vid < aoslo_movie.nStimVideoNum; vid ++) {
-
-			pStream = g_GetAviStream(parent->m_strStimVideoName[vid], &frames, &fWidth, &fHeight, &iFirstFrame, &nPlanes, &fBufSize);
-			if (pStream == NULL) {
-				AVIStreamRelease(pStream);
-				AVIFileExit();
-				AfxMessageBox("Error: can't open avi stream", MB_ICONWARNING);
-			} else {
-				if (fWidth > 256 || fHeight > 256 || fWidth <= 0 || fHeight <= 0) {
-					AVIStreamRelease(pStream);
-					AVIFileExit();
-					AfxMessageBox("Invalid video size. It is required to be 0 <width<=257 and 0<height<=257.", MB_ICONWARNING);
-				} else {
-					fWidthOffs = fWidth%4;
-					aoslo_movie.nStimFrameNum  = frames;
-					aoslo_movie.nStimVideoLength[vid] = frames;
-
-					aoslo_movie.nStimVideoNX[vid]   = fWidth;			// stimulus width
-					aoslo_movie.nStimVideoNY[vid]   = (fHeight%2==0) ? fHeight : fHeight+1;			// stimulus Height
-					aoslo_movie.nStimVideoPlanes[vid] = nPlanes;
-					aoslo_movie.stim_video[vid] = new unsigned short [frames*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes];
-					ZeroMemory(aoslo_movie.stim_video[vid], sizeof(unsigned short)*frames*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes);
-					tempBuff = new unsigned short [aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes];
-					ZeroMemory(tempBuff, sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes);
-
-					pFrame = AVIStreamGetFrameOpen(pStream, NULL);
-
-					bytBuff   = new BYTE[fBufSize];//fWidth*fHeight*nPlanes];
-
-					// read video stream to video buffer
-					for (i = 0; i < frames; i ++)
-					{
-						// the returned is a packed DIB frame
-						imgTemp = (BYTE*) AVIStreamGetFrame(pFrame, i);
-
-						RtlMoveMemory(&bih.biSize, imgTemp, sizeof(BITMAPINFOHEADER));
-
-						//now get the bitmap bits
-						if (bih.biSizeImage < 1) {
-							msg.Format("Error: can't read frame No. %d/%d.", i+1, frames);
-							AfxMessageBox(msg, MB_ICONWARNING);
-						}
-						// get rid of the header information and retrieve the real image 
-						nPlanes == 1?
-						RtlMoveMemory(bytBuff, imgTemp+sizeof(BITMAPINFOHEADER)+sizeof(RGBQUAD)*256, bih.biSizeImage)
-						:RtlMoveMemory(bytBuff, imgTemp+sizeof(BITMAPINFOHEADER), bih.biSizeImage);	
-						ind = i*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes;
-						for (j = 0; j < fHeight/*aoslo_movie.nStimVideoNY[vid]*/; j ++) {							
-						//	idxd1 = ind + (j * aoslo_movie.nStimVideoNX[vid]);
-							idxd1 = j*aoslo_movie.nStimVideoNX[vid];
-							idxs = (fHeight-1-j) * (fWidth * nPlanes + fWidthOffs);
-							if (nPlanes > 1) {
-							//	idxd2 = ind + (aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid] + j * aoslo_movie.nStimVideoNX[vid]);
-								idxd2 = idxd1+(aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
-							//	idxd3 = ind + ((aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid] << 1) + j * aoslo_movie.nStimVideoNX[vid]);
-								idxd3 = idxd2+(aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
-							}
-							for (k = 0; k < fWidth/*aoslo_movie.nStimVideoNX[vid]*/; k ++) {
-								if (nPlanes > 1) {
-									datain = bytBuff[idxs+k*nPlanes+2]<<6;
-								//	aoslo_movie.stim_video[vid][idxd1+k] = datain;
-									tempBuff[idxd1+k] = datain;
-									datain = bytBuff[idxs+k*nPlanes+1]<<6;
-								//	aoslo_movie.stim_video[vid][idxd2+k] = datain;
-									tempBuff[idxd2+k] = datain;
-									datain = bytBuff[idxs+k*nPlanes]<<6;
-								//	aoslo_movie.stim_video[vid][idxd3+k] = datain;
-									tempBuff[idxd3+k] = datain;
-								} 
-								else {
-									datain = bytBuff[idxs + k*nPlanes]<<6;
-								//	aoslo_movie.stim_video[vid][idxd1+k] = datain;
-									tempBuff[idxd1+k] = datain;
-								}								
-							}
-						}
-
-						if (nPlanes > 1) {
-							if (fHeight%2 != 0)
-								VUS_equC(&tempBuff[aoslo_movie.nStimVideoNX[vid]* (aoslo_movie.nStimVideoNY[vid]*2 + fHeight)], aoslo_movie.nStimVideoNX[vid], 255<<6); 
-							idxd1 = ind+aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid];
-							idxd2 = idxd1+aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid];
-							memcpy(aoslo_movie.stim_video[vid]+ind, tempBuff, sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
-							memcpy(aoslo_movie.stim_video[vid]+idxd1, tempBuff+(aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]), sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
-							memcpy(aoslo_movie.stim_video[vid]+idxd2, tempBuff+(aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*2), sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
+			switch (aoslo_movie.nStimVideoExt) {
+				case 0: //avi
+					pStream = g_GetAviStream(aoslo_movie.strStimVideoName[vid], &frames, &fWidth, &fHeight, &iFirstFrame, &nPlanes, &fBufSize);
+					if (pStream == NULL) {
+						AVIStreamRelease(pStream);
+						AVIFileExit();
+						AfxMessageBox("Error: can't open avi stream", MB_ICONWARNING);
+					} else {
+						if (fWidth > 256 || fHeight > 256 || fWidth <= 0 || fHeight <= 0) {
+							AVIStreamRelease(pStream);
+							AVIFileExit();
+							AfxMessageBox("Invalid video size. It is required to be 0 <width<=257 and 0<height<=257.", MB_ICONWARNING);
 						} else {
-							memcpy(aoslo_movie.stim_video[vid]+ind, tempBuff, sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
-						}
-					}
+							fWidthOffs = fWidth%4;
+							aoslo_movie.nStimFrameNum  = frames;
+							aoslo_movie.nStimVideoLength[vid] = frames;
 
-					AVIStreamGetFrameClose(pFrame);    
-					AVIStreamRelease(pStream);
-					AVIFileExit();
-				}
-				
-				delete [] bytBuff;
-				delete [] tempBuff;
-			}
+							aoslo_movie.nStimVideoNX[vid]   = fWidth;			// stimulus width
+							aoslo_movie.nStimVideoNY[vid]   = (fHeight%2==0) ? fHeight : fHeight+1;			// stimulus Height
+							aoslo_movie.nStimVideoPlanes[vid] = nPlanes;
+							aoslo_movie.stim_video[vid] = new unsigned short [frames*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes];
+							ZeroMemory(aoslo_movie.stim_video[vid], sizeof(unsigned short)*frames*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes);
+							tempBuff = new unsigned short [aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes];
+							ZeroMemory(tempBuff, sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes);
+
+							pFrame = AVIStreamGetFrameOpen(pStream, NULL);
+
+							bytBuff   = new BYTE[fBufSize];//fWidth*fHeight*nPlanes];
+
+							// read video stream to video buffer
+							for (i = 0; i < frames; i ++)
+							{
+								// the returned is a packed DIB frame
+								imgTemp = (BYTE*) AVIStreamGetFrame(pFrame, i);
+
+								RtlMoveMemory(&bih.biSize, imgTemp, sizeof(BITMAPINFOHEADER));
+
+								//now get the bitmap bits
+								if (bih.biSizeImage < 1) {
+									msg.Format("Error: can't read frame No. %d/%d.", i+1, frames);
+									AfxMessageBox(msg, MB_ICONWARNING);
+								}
+								// get rid of the header information and retrieve the real image 
+								nPlanes == 1?
+									RtlMoveMemory(bytBuff, imgTemp+sizeof(BITMAPINFOHEADER)+sizeof(RGBQUAD)*256, bih.biSizeImage)
+									:RtlMoveMemory(bytBuff, imgTemp+sizeof(BITMAPINFOHEADER), bih.biSizeImage);	
+								ind = i*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*nPlanes;
+								for (j = 0; j < fHeight/*aoslo_movie.nStimVideoNY[vid]*/; j ++) {							
+									//	idxd1 = ind + (j * aoslo_movie.nStimVideoNX[vid]);
+									idxd1 = j*aoslo_movie.nStimVideoNX[vid];
+									idxs = (fHeight-1-j) * (fWidth * nPlanes + fWidthOffs);
+									if (nPlanes > 1) {
+										//	idxd2 = ind + (aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid] + j * aoslo_movie.nStimVideoNX[vid]);
+										idxd2 = idxd1+(aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
+										//	idxd3 = ind + ((aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid] << 1) + j * aoslo_movie.nStimVideoNX[vid]);
+										idxd3 = idxd2+(aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
+									}
+									for (k = 0; k < fWidth/*aoslo_movie.nStimVideoNX[vid]*/; k ++) {
+										if (nPlanes > 1) {
+											datain = (unsigned short)((bytBuff[idxs+k*nPlanes+2]/255.)*1000.);
+											//	aoslo_movie.stim_video[vid][idxd1+k] = datain;
+											tempBuff[idxd1+k] = datain;
+											datain = (unsigned short)((bytBuff[idxs+k*nPlanes+1]/255.)*1000.);
+											//	aoslo_movie.stim_video[vid][idxd2+k] = datain;
+											tempBuff[idxd2+k] = datain;
+											datain = (unsigned short)((bytBuff[idxs+k*nPlanes]/255.)*1000.);
+											//	aoslo_movie.stim_video[vid][idxd3+k] = datain;
+											tempBuff[idxd3+k] = datain;
+										} 
+										else {
+											datain = (unsigned short)((bytBuff[idxs+k*nPlanes]/255.)*1000.);
+											//	aoslo_movie.stim_video[vid][idxd1+k] = datain;
+											tempBuff[idxd1+k] = datain;
+										}								
+									}
+								}
+
+								if (nPlanes > 1) {
+									if (fHeight%2 != 0)
+										VUS_equC(&tempBuff[aoslo_movie.nStimVideoNX[vid]* (aoslo_movie.nStimVideoNY[vid]*2 + fHeight)], aoslo_movie.nStimVideoNX[vid], 16383); 
+									idxd1 = ind+aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid];
+									idxd2 = idxd1+aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid];
+
+									memcpy(aoslo_movie.stim_video[vid]+ind, tempBuff, sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
+									memcpy(aoslo_movie.stim_video[vid]+idxd1, tempBuff+(aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]), sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
+									memcpy(aoslo_movie.stim_video[vid]+idxd2, tempBuff+(aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]*2), sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);									
+								} else {
+									memcpy(aoslo_movie.stim_video[vid]+ind, tempBuff, sizeof(unsigned short)*aoslo_movie.nStimVideoNX[vid]*aoslo_movie.nStimVideoNY[vid]);
+								}
+							}
+
+							AVIStreamGetFrameClose(pFrame);    
+							AVIStreamRelease(pStream);
+							AVIFileExit();
+						}
+
+						delete [] bytBuff;
+						delete [] tempBuff;
+					}
+					break;
+				case 1:					
+					if (fopen_s(&aoslo_movie.FPStimVideo, aoslo_movie.strStimVideoName[vid],"rb")) {
+						AfxMessageBox(_T("Open file <") + aoslo_movie.strStimVideoName[vid] + _T("> error"), MB_ICONEXCLAMATION);
+					} else {
+						unsigned short width=0, height=0;
+						fread(&aoslo_movie.nStimVideoNX[vid], sizeof(unsigned short), 1, aoslo_movie.FPStimVideo);
+						fread(&aoslo_movie.nStimVideoNY[vid], sizeof(unsigned short), 1, aoslo_movie.FPStimVideo);
+						aoslo_movie.nStimVideoFrameSize[vid] = aoslo_movie.nStimVideoNX[vid] * aoslo_movie.nStimVideoNY[vid];
+						fread(&aoslo_movie.nStimVideoPlanes[vid], sizeof(unsigned short), 1, aoslo_movie.FPStimVideo);
+						fread(&aoslo_movie.nStimVideoLength[vid], sizeof(unsigned short), 1, aoslo_movie.FPStimVideo);						
+						fclose(aoslo_movie.FPStimVideo);
+					}
+					aoslo_movie.FPStimVideo = NULL;
+					break;
+				default:
+					;
+			}			
 		}
 		if (!g_bMatlabCtrl) {
 			msg.Format("All %d stimulus videos have been loaded. Do you want to deliver this stimulus video?", aoslo_movie.nStimVideoNum);
@@ -3471,7 +3543,8 @@ DWORD WINAPI CICANDIDoc::ThreadNetMsgProcess(LPVOID pParam)
 					wnd->SetCheck(g_bGain0Tracking);
 				}
 				else if (ext == "GRVIDT") { //12/15/2011
-					if (strcmp(msg, "-") != 0) {
+					initials = msg.Left(msg.Find('#'));
+					if (strcmp(initials, "-") != 0) {
 						g_bMatlab_Update = FALSE;
 						g_bMatlab_Loop?g_bMatlab_Loop=FALSE:0;
 						g_bMatlab_Trigger = TRUE;
@@ -3481,10 +3554,16 @@ DWORD WINAPI CICANDIDoc::ThreadNetMsgProcess(LPVOID pParam)
 						g_bMatlabCtrl = TRUE;
 						g_viewMsgVideo->PostMessage(WM_MOVIE_SEND, 0, SAVE_VIDEO_FLAG);
 					}
-					else { //command called by avi file mode to save video						
-						g_nCurFlashCount = 0;
-						g_bMatlabAVIsavevideo = TRUE;
-					}
+				}
+				else if (ext == "GRVIDA") { //01/30/2018
+					//command called by avi file mode to save video
+					g_nCurFlashCount = 0;
+					g_bMatlabAVIsavevideo = TRUE;
+					g_bMatlabVideo = TRUE;
+					parent->m_videoFileName = msg.Left(msg.ReverseFind('#'));
+					parent->m_bExtCtrl = TRUE;
+					aoslo_movie.nStimVideoIdx = atoi(msg.Right(msg.GetLength()-msg.ReverseFind('#')-1))-1;
+					g_viewMsgVideo->PostMessage(WM_MOVIE_SEND, 0, SAVE_VIDEO_FLAG);
 				}
 				else if (ext == "GRVIDL") { //08/21/2017
 					ind = msg.ReverseFind('#');
@@ -3505,9 +3584,9 @@ DWORD WINAPI CICANDIDoc::ThreadNetMsgProcess(LPVOID pParam)
 					g_bMatlab_Trigger = FALSE;
 					parent->Load_Default_Stimulus(true);
 					aoslo_movie.WriteMarkFlag = FALSE;
-					ext = msg.Right(3);//get stimuli file extension
+					ext = msg.Right(msg.GetLength()-msg.ReverseFind('#')-1);//get the extension of stimuli file
 					ext = '.'+ext;
-					msg.Delete(msg.GetLength()-4, 4);
+					msg = msg.Left(msg.GetLength()-(msg.GetLength()-msg.ReverseFind('#')));						
 					ind = atoi(msg.Right(msg.GetLength()-msg.ReverseFind('#')-1));//get the ending count of stimuli
 					msg = msg.Left(msg.GetLength()-(msg.GetLength()-msg.ReverseFind('#')));				
 					i = atoi(msg.Right(msg.GetLength()-msg.ReverseFind('#')-1));//get the starting count number of stimuli
@@ -3871,6 +3950,8 @@ CICANDIDoc::CICANDIDoc()
 	m_bSymbol           = FALSE;
 	m_nStimSizeX        = 0;
 	m_nStimSizeY        = 0;
+	m_ppdata			= 0x03;
+	Out32(0xD050,m_ppdata);
 
 	//Laser controls
 	g_dRedMax		= 1.0;	//max red power at the pupil
@@ -3937,6 +4018,7 @@ CICANDIDoc::CICANDIDoc()
 	for (int i = 0; i < MAX_STIMULUS_NUMBER; i ++)
 		aoslo_movie.RandPathIndex[i] = i;
 	aoslo_movie.memory_pool_ID  = 0;
+	aoslo_movie.memory_pool_ID_St  = 0;
 	aoslo_movie.avi_handle_on_A = FALSE;
 	aoslo_movie.avi_handle_on_B = FALSE;
 	aoslo_movie.video_saveA1    = NULL;
@@ -3998,8 +4080,8 @@ CICANDIDoc::CICANDIDoc()
 	aoslo_movie.bIRAomOn		= TRUE;
 	aoslo_movie.bRedAomOn		= TRUE;
 	aoslo_movie.bGrAomOn		= TRUE;
-//	m_strStimVideoName          = "";
-	m_strStimVideoName          = NULL;
+	aoslo_movie.strStimVideoName	= NULL;
+	aoslo_movie.FPStimVideo	= NULL;
 	m_nMovieLength				= 30;
 	g_StimulusPos0Gain.x        = 0;
 	g_StimulusPos0Gain.y        = 0;
@@ -4028,6 +4110,7 @@ CICANDIDoc::CICANDIDoc()
 	m_bCameraConnected = FALSE;
 	// status of video saving
 	m_bDumpingVideo    = FALSE;
+	m_bDumpingDewarpVideo    = FALSE;
 	m_bUpdateDutyCycle = FALSE;
 
 	g_bEOFHandler      = FALSE;
@@ -4259,7 +4342,7 @@ CICANDIDoc::CICANDIDoc()
 	aoslo_movie.stimuli_buf[0] = new unsigned short[256*256];
 	aoslo_movie.stimuli_buf[1] = new unsigned short[256*256];
 	FillMemory(aoslo_movie.stimuli_buf[0], sizeof(unsigned short)*256*256, 0); //off frame
-	VUS_equC(aoslo_movie.stimuli_buf[1], 256*256, 16383); //on frame
+	VUS_equC(aoslo_movie.stimuli_buf[1], 256*256, 1000); //on frame
 	aoslo_movie.stimuli_sx[0] = 256;
 	aoslo_movie.stimuli_sy[0] = 256;
 	aoslo_movie.stimuli_sx[1] = 256;
@@ -4295,6 +4378,8 @@ void CICANDIDoc::Initialize_LUT()
 CICANDIDoc::~CICANDIDoc()
 {
 //	fclose(g_fp);
+	
+	Out32(0xD050,0);
 
 	V_closeMT();
 
@@ -4568,7 +4653,9 @@ void CICANDIDoc::OnCameraConnect()
 	thd_handle[0] = CreateThread(NULL, 0, ThreadVideoSampling, this, 0, &thdid_handle[0]);
 	SetThreadPriority(thd_handle[0], THREAD_PRIORITY_LOWEST);
 	thd_handle[1] = CreateThread(NULL, 0, ThreadSaveVideoHDD, this, 0, &thdid_handle[1]);
-	SetThreadPriority(thd_handle[1], THREAD_PRIORITY_LOWEST);	
+	SetThreadPriority(thd_handle[1], THREAD_PRIORITY_LOWEST);
+	thd_handle[9] = CreateThread(NULL, 0, ThreadSaveDewarpVideoHDD, this, 0, &thdid_handle[9]);
+	SetThreadPriority(thd_handle[9], THREAD_PRIORITY_LOWEST);	
 	thd_handle[2] = CreateThread(NULL, 0, ThreadStablizationFFT, this, 0, &thdid_handle[2]);
 	SetThreadPriority(thd_handle[2], THREAD_PRIORITY_TIME_CRITICAL);
 }
@@ -5070,20 +5157,51 @@ void CICANDIDoc::LoadSymbol(CString filename, unsigned short* stim_buffer, int w
 }
 
 
-BOOL CICANDIDoc::LoadStimVideo(CString *filename, int file_num)
+BOOL CICANDIDoc::LoadStimVideo(CString *filename, int file_num, CString ext)
 {
 	int i;
+	BOOL clear = FALSE;
 
-	if (m_strStimVideoName != NULL) delete [] m_strStimVideoName;
-	m_strStimVideoName = new CString [file_num];
+	if (aoslo_movie.strStimVideoName != NULL) delete [] aoslo_movie.strStimVideoName;
+	aoslo_movie.strStimVideoName = new CString [file_num];
 
-	if (aoslo_movie.stim_video != NULL) {
-		for (i = 0; i < aoslo_movie.nStimVideoNum; i ++) 
-			delete [] aoslo_movie.stim_video[i];
-		delete [] aoslo_movie.stim_video;
+	if (aoslo_movie.stim_video != NULL || aoslo_movie.FPStimVideo != NULL) {
+		clear = TRUE;
+		if (aoslo_movie.stim_video != NULL) {
+			for (i = 0; i < aoslo_movie.nStimVideoNum; i ++) 
+				if (aoslo_movie.stim_video[i] != NULL)
+					delete [] aoslo_movie.stim_video[i];
+			
+			delete [] aoslo_movie.stim_video;
+		} 
+		if (aoslo_movie.FPStimVideo != NULL) {
+			fclose(aoslo_movie.FPStimVideo);
+			aoslo_movie.FPStimVideo = NULL;
+		}	
+	}
+
+	if (clear) {		
 		delete [] aoslo_movie.nStimVideoNX;
 		delete [] aoslo_movie.nStimVideoNY;
+		delete [] aoslo_movie.nStimVideoFrameSize;
 		delete [] aoslo_movie.nStimVideoPlanes;
+		delete [] aoslo_movie.nStimVideoLength;
+	}
+
+	if (ext == ".avi")	
+		aoslo_movie.nStimVideoExt = 0;
+	else if (ext == ".mbuf") 
+		aoslo_movie.nStimVideoExt = 1;
+
+	switch (aoslo_movie.nStimVideoExt) {
+		case 0:
+			aoslo_movie.stim_video	= new unsigned short *[file_num];
+			break;
+		case 1:
+			aoslo_movie.FPStimVideo = new FILE [file_num];
+			break;
+		default:
+			;
 	}
 
 	aoslo_movie.stim_video       = new unsigned short *[file_num];
@@ -5093,10 +5211,10 @@ BOOL CICANDIDoc::LoadStimVideo(CString *filename, int file_num)
 	aoslo_movie.nStimVideoPlanes = new int [file_num];
 
 	for (i = 0; i < file_num; i ++) {
-		m_strStimVideoName[i] = filename[i];
+		aoslo_movie.strStimVideoName[i] = filename[i];
 	}
 	aoslo_movie.nStimVideoNum = file_num;
-	
+
 	SetEvent(g_EventReadStimVideo);
 
 	g_ICANDIParams.StimuliPath = filename[0].Left(filename[0].ReverseFind('\\'));
@@ -5115,7 +5233,7 @@ BOOL CICANDIDoc::LoadMultiStimuli_Matlab(int clear, CString folder, CString pref
 	
 	stim_buffer = NULL;
 	
-	if (ext == ".avi") {
+	if (ext == ".avi" || ext == ".mbuf") {
 		g_bMatlabVideo = FALSE;
 		if (startind == endind)
 			filename = new CString[1];
@@ -5133,7 +5251,7 @@ BOOL CICANDIDoc::LoadMultiStimuli_Matlab(int clear, CString folder, CString pref
 			filename[i-startind] = msg+ext;
 		}						
 		g_bMatlabCtrl = TRUE;
-		LoadStimVideo(filename, (endind-startind+1));
+		LoadStimVideo(filename, (endind-startind+1), ext);
 	}
 	
 	else {

@@ -82,7 +82,8 @@ public:
 	BYTE   *video_saveB1;		// storing stabilized video
 	BYTE   *video_saveB2;		// storing stabilized video
 	BYTE   *video_saveB3;		// storing stabilized video
-	BYTE    memory_pool_ID;
+	BYTE    memory_pool_ID;	
+	BYTE    memory_pool_ID_St;
 	BOOL    avi_handle_on_A;
 	BOOL    avi_handle_on_B;
 
@@ -134,10 +135,14 @@ public:
 	BOOL    bWithStimVideo;		// flag with stimulus video
 	int     nStimFrameIdx;
 	int     nStimFrameNum;
+	FILE	*FPStimVideo;
+	CString *strStimVideoName;
 	int    *nStimVideoNX;
 	int    *nStimVideoNY;
-	int	   *nStimVideoLength;	
-	int	   *nStimVideoPlanes;
+	int	   *nStimVideoLength;
+	int    *nStimVideoPlanes;
+	unsigned int	  *nStimVideoFrameSize;
+	int		nStimVideoExt; //0-avi, 1-mbuf
 	int	    nStimVideoNum;
 	int	    nStimVideoIdx;
 	BOOL    bStimRewind;

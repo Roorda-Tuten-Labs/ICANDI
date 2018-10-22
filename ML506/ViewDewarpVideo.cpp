@@ -87,6 +87,7 @@ CViewDewarpVideo::CViewDewarpVideo()
 //	m_bPatchIsSelected     = FALSE;
 	m_tempVideoOut		   = NULL;
 	m_bUpdateStimLoc	   = FALSE;
+	m_MemPoolID         = 0;
 
 	// create a red pen
 	m_PenRed.CreatePen(PS_SOLID, 1, RGB(255,0,0));
@@ -208,11 +209,13 @@ LRESULT CViewDewarpVideo::OnSendMovie(WPARAM wParam, LPARAM lParam)
 
 void CViewDewarpVideo::DrawMovie(CDC *pDC)
 {
-	int     i, width, height, cx, cy;
+	int     i, j, width, height, cx, cy;
+	long    offset;
 
 	width  = aoslo_movie.width;
 	height = aoslo_movie.height;
 
+	CICANDIDoc* pDoc = (CICANDIDoc*)GetDocument();
 	if (m_msgID == SENDING_MOVIE) {
 		m_iMousePts = 0;
 		m_stimulusPos.x = m_stimulusPos.y = -1;
@@ -249,6 +252,47 @@ void CViewDewarpVideo::DrawMovie(CDC *pDC)
 			}
 
 			memcpy(m_tempVideoOut, aoslo_movie.video_out, aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy);
+			if (pDoc->m_bValidAviHandleB == TRUE) {
+				if (pDoc->m_iSavedFramesB == 0)
+					m_MemPoolID = 0;
+				// Temporary store stabilized video to a big buffer
+				if (pDoc->m_bValidAviHandleB == TRUE && g_bFFTIsRunning == TRUE) {
+					if (pDoc->m_iSavedFramesB%2 == 0 && 
+						pDoc->m_iSavedFramesB/2 <= pDoc->m_nMovieLength &&
+						aoslo_movie.video_saveB1 != NULL &&
+						aoslo_movie.video_saveB2 != NULL &&
+						aoslo_movie.video_saveB3 != NULL) {
+
+							j = MEMORY_POOL_LENGTH;
+							i = pDoc->m_iSavedFramesB%(j*2);
+							i = i/2;
+							offset = i * aoslo_movie.dewarp_sx * aoslo_movie.dewarp_sy;
+							if (m_MemPoolID == 0) {
+								memcpy(&aoslo_movie.video_saveB1[offset], m_tempVideoOut, aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy*sizeof(BYTE));
+							} else if (m_MemPoolID == 1) {
+								memcpy(&aoslo_movie.video_saveB2[offset], m_tempVideoOut, aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy*sizeof(BYTE));
+							} else if (m_MemPoolID == 2) {
+								memcpy(&aoslo_movie.video_saveB3[offset], m_tempVideoOut, aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy*sizeof(BYTE));
+							}
+					}
+					if (pDoc->m_iSavedFramesB%2 == 0 && 
+						pDoc->m_iSavedFramesB/2 <= pDoc->m_nMovieLength) {
+
+							j = MEMORY_POOL_LENGTH;
+							if ((2+pDoc->m_iSavedFramesB)%(j*2) == 0) {						
+								aoslo_movie.memory_pool_ID_St = m_MemPoolID;
+								if (m_MemPoolID == 0)       m_MemPoolID = 1;
+								else if (m_MemPoolID == 1) 	m_MemPoolID = 2;
+								else if (m_MemPoolID == 2) 	m_MemPoolID = 0;
+
+								// turn flag on streaming videos from RAM to HDD
+								pDoc->m_bDumpingDewarpVideo = TRUE;		
+							}
+					}
+					pDoc->m_iSavedFramesB ++;
+				}
+			}
+
 			if (aoslo_movie.DeliveryMode == 0) {
 				::StretchDIBits(m_hdc, 0, 0, aoslo_movie.dewarp_sx, aoslo_movie.dewarp_sy,
 					0, 0, aoslo_movie.dewarp_sx, aoslo_movie.dewarp_sy, m_tempVideoOut,

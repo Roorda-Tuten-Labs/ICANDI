@@ -96,6 +96,7 @@ protected: // create from serialization only
 // Attributes
 public:	
 	BOOL    m_bDumpingVideo;
+	BOOL    m_bDumpingDewarpVideo;
 	BOOL	m_bUpdateDutyCycle;
 
 	//MIL_ID   m_MilImage;		// Image buffer identifier.
@@ -112,10 +113,9 @@ public:
 
 // Implementation
 public:
-	CString *m_strStimVideoName;
 	BOOL  m_bSymbol;
 	void  LoadSymbol(CString filename="", unsigned short* stim_data=NULL, int width=0, int height=0);
-	BOOL  LoadStimVideo(CString *filename, int i);
+	BOOL  LoadStimVideo(CString *filename, int i, CString ext);
 
 	virtual ~CICANDIDoc();
 #ifdef _DEBUG
@@ -165,6 +165,7 @@ private:
 	HANDLE  thd_handle[10];
 	static  DWORD WINAPI ThreadStablizationFFT(LPVOID pParam);
 	static  DWORD WINAPI ThreadSaveVideoHDD(LPVOID pParam);
+	static  DWORD WINAPI ThreadSaveDewarpVideoHDD(LPVOID pParam);
 	static  DWORD WINAPI ThreadVideoSampling(LPVOID pParam);
 	static  DWORD WINAPI ThreadLoadData2FPGA(LPVOID pParam);
 	static  DWORD WINAPI ThreadReadStimVideo(LPVOID pParam);

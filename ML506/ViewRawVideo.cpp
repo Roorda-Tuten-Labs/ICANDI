@@ -66,7 +66,6 @@ CViewRawVideo::CViewRawVideo()
 	
 	m_MemPoolID         = 0;
 	m_tempVideoIn = NULL;
-	m_tempVideoOut = NULL;
 
 	m_PenGreen.CreatePen(PS_SOLID, 2, RGB(0, 255, 0));
 	m_PenYellow.CreatePen(PS_SOLID, 1, RGB(255, 255, 0));
@@ -76,7 +75,6 @@ CViewRawVideo::~CViewRawVideo()
 {
 	if(m_BitmapInfoWarp) free(m_BitmapInfoWarp);
 	if(m_tempVideoIn !=  NULL) delete [] m_tempVideoIn;
-	if(m_tempVideoOut !=  NULL) delete [] m_tempVideoOut;
 }
 
 void CViewRawVideo::DoDataExchange(CDataExchange* pDX)
@@ -144,7 +142,6 @@ LRESULT CViewRawVideo::OnSendMovie(WPARAM wParam, LPARAM lParam)
 		if(m_BitmapInfoWarp) free(m_BitmapInfoWarp);
 		if((m_BitmapInfoWarp = CreateDIB(width, height)) == NULL) return FALSE;
 		if (m_tempVideoIn == NULL) m_tempVideoIn = new BYTE[aoslo_movie.width*aoslo_movie.height];
-		if (m_tempVideoOut == NULL) m_tempVideoOut = new BYTE[aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy];
 
 		m_start = clock();
 
@@ -285,31 +282,6 @@ void CViewRawVideo::DrawMovie(CDC *pDC)
 				fprintf(pDoc->m_fpStimPos, "\n");
 			}
 		}
-	}
-
-	// Temporary store stabilized video to a big buffer
-	if (pDoc->m_bValidAviHandleB == TRUE && g_bFFTIsRunning == TRUE) {
-		memcpy(m_tempVideoOut, aoslo_movie.video_out, aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy); 
-
-		if (pDoc->m_iSavedFramesB%2 == 0 && 
-			pDoc->m_iSavedFramesB/2 <= pDoc->m_nMovieLength &&
-			aoslo_movie.video_saveB1 != NULL &&
-			aoslo_movie.video_saveB2 != NULL &&
-			aoslo_movie.video_saveB3 != NULL) {
-
-				j = MEMORY_POOL_LENGTH;
-				i = pDoc->m_iSavedFramesB%(j*2);
-				i = i/2;
-				offset = i * aoslo_movie.dewarp_sx * aoslo_movie.dewarp_sy;
-				if (m_MemPoolID == 0) {
-					memcpy(&aoslo_movie.video_saveB1[offset], m_tempVideoOut, aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy*sizeof(BYTE));
-				} else if (m_MemPoolID == 1) {
-					memcpy(&aoslo_movie.video_saveB2[offset], m_tempVideoOut, aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy*sizeof(BYTE));
-				} else if (m_MemPoolID == 2) {
-					memcpy(&aoslo_movie.video_saveB3[offset], m_tempVideoOut, aoslo_movie.dewarp_sx*aoslo_movie.dewarp_sy*sizeof(BYTE));
-				}
-		}
-		pDoc->m_iSavedFramesB ++;
 	}
 
 	if (pDoc->m_bValidAviHandleA == TRUE) {

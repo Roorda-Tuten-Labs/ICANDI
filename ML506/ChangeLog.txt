@@ -1,3 +1,4 @@
+10/22/2018: Added option to load mbuf files, seperated thread to save stabilized video
 09/28/2017: cleaned code, removed FRAME_ROTATION option
 03/03/2017: Applicaiton migrated to Windows 7 Pro 64bit with 32bit libraries/dependencies
 06/04/2015: Updated code for minor fixes, app crashing when clicked on stabilization window when there is no stabilization runnning etc

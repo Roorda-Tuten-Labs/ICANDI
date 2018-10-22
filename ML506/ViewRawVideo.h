@@ -39,7 +39,6 @@ private:
 	clock_t        m_finish;
 	CByteArray     m_array;
 	BYTE		   *m_tempVideoIn;
-	BYTE		   *m_tempVideoOut;
 	int            m_MemPoolID;	
 	BYTE	m_regAddr;           
 	UINT	m_regVal;
